@@ -10,8 +10,8 @@ import speech_recognition as sr
 
 # Load environment variables
 load_dotenv()
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-HEYGEN_API_KEY = os.getenv("HEYGEN_API_KEY", "")
+gemini_api_key = os.getenv("GEMINI_API_KEY")
+heygen_api_key = os.getenv("HEYGEN_API_KEY")
 
 if gemini_api_key:
     os.environ["GEMINI_API_KEY"] = gemini_api_key
