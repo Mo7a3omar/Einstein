@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>AI Einstein - Voice Assistant</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #f5f5f5; margin: 0; }
+        .container { max-width: 800px; margin: 40px auto; background: #fff; border-radius: 10px; box-shadow: 0 2px 8px #ccc; padding: 24px; }
+        h1 { text-align: center; }
+        .controls { display: flex; gap: 10px; margin-bottom: 20px; }
+        button { flex: 1; font-size: 1.2rem; padding: 0.5rem 1rem; border-radius: 5px; border: none; cursor: pointer; }
+        .start-button { background: #28a745; color: #fff; }
+        .stop-button { background: #dc3545; color: #fff; }
+        .language-toggle { display: flex; justify-content: center; margin-bottom: 20px; }
+        .language-button { padding: 10px 20px; margin: 0 5px; border: 1px solid #ccc; border-radius: 5px; cursor: pointer; }
+        .language-button.active { background: #007bff; color: #fff; border-color: #007bff; }
+        .status { margin-bottom: 20px; }
+        .avatar-container { width: 100%; height: 400px; background: #000; border-radius: 10px; margin-bottom: 20px; }
+        #avatar-video { width: 100%; height: 100%; object-fit: contain; }
+        .footer { text-align: center; opacity: 0.7; font-size: 0.9rem; margin-top: 20px; }
+        .error-message { color: #dc3545; margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1 id="title">AI Einstein - Hands-Free Voice Assistant</h1>
+    <div class="language-toggle">
+        <div class="language-button active" data-lang="en">🇺🇸 English</div>
+        <div class="language-button" data-lang="ko">🇰🇷 한국어</div>
+    </div>
+    <div class="controls">
+        <button id="startButton" class="start-button">Start Avatar Session</button>
+        <button id="stopButton" class="stop-button" disabled>Stop Avatar Session</button>
+    </div>
+    <div id="avatarContainer" class="avatar-container" style="display: none;">
+        <video id="avatar-video" autoplay playsinline></video>
+    </div>
+    <div class="status">
+        <span id="statusText">Inactive</span>
+    </div>
+    <div id="errorMessage" class="error-message"></div>
+    <div class="footer" id="footerText">
+        AI Einstein Avatar v2.0 - Fast Voice Interface
+    </div>
+</div>
+<script>
+let currentLanguage = 'en';
+const labels = {
+    en: {
+        title: "AI Einstein - Hands-Free Voice Assistant",
+        start: "Start Avatar Session",
+        stop: "Stop Avatar Session",
+        listening: "Listening...",
+        inactive: "Inactive",
+        errorMic: "Microphone not supported",
+        errorStart: "Failed to start session",
+        errorStop: "Failed to stop session",
+        errorAudio: "Could not understand audio",
+        footer: "AI Einstein Avatar v2.0 - Fast Voice Interface"
+    },
+    ko: {
+        title: "AI 아인슈타인 - 음성 비서",
+        start: "아바타 세션 시작",
+        stop: "아바타 세션 중지",
+        listening: "듣는 중...",
+        inactive: "비활성화됨",
+        errorMic: "마이크를 사용할 수 없습니다",
+        errorStart: "세션 시작 실패",
+        errorStop: "세션 중지 실패",
+        errorAudio: "음성을 이해하지 못했습니다",
+        footer: "AI 아인슈타인 아바타 v2.0 - 빠른 음성 인터페이스"
+    }
+};
+const startButton = document.getElementById('startButton');
+const stopButton = document.getElementById('stopButton');
+const avatarContainer = document.getElementById('avatarContainer');
+const statusText = document.getElementById('statusText');
+const languageButtons = document.querySelectorAll('.language-button');
+const errorMessage = document.getElementById('errorMessage');
+const title = document.getElementById('title');
+const footerText = document.getElementById('footerText');
+let mediaRecorder, audioChunks = [], isRecording = false, sessionId = null, accessToken = null, url = null;
+let vadStream, audioContext, vadScriptNode, vadSource, vadSilence = true, vadTimeout = null;
+
+function updateLanguage(lang) {
+    currentLanguage = lang;
+    languageButtons.forEach(btn => btn.classList.toggle('active', btn.dataset.lang === lang));
+    // Update all interface labels
+    title.textContent = labels[lang].title;
+    startButton.textContent = labels[lang].start;
+    stopButton.textContent = labels[lang].stop;
+    statusText.textContent = labels[lang].inactive;
+    footerText.textContent = labels[lang].footer;
+}
+languageButtons.forEach(button => {
+    button.addEventListener('click', () => updateLanguage(button.dataset.lang));
+});
+function showError(message) {
+    errorMessage.textContent = message;
+    errorMessage.style.display = 'block';
+    setTimeout(() => { errorMessage.style.display = 'none'; }, 4000);
+}
+startButton.onclick = async () => {
+    startButton.disabled = true;
+    try {
+        const response = await fetch('/api/session/create', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ interface_language: currentLanguage })
+        });
+        const data = await response.json();
+        if (data.success) {
+            sessionId = data.session_id;
+            accessToken = data.access_token;
+            url = data.url;
+            avatarContainer.style.display = '';
+            stopButton.disabled = false;
+            statusText.textContent = labels[currentLanguage].listening;
+            setupLiveKit(url, accessToken);
+            startVoiceRecognitionVAD();
+        } else {
+            showError(data.error || labels[currentLanguage].errorStart);
+            startButton.disabled = false;
+        }
+    } catch (e) {
+        showError(labels[currentLanguage].errorStart);
+        startButton.disabled = false;
+    }
+};
+stopButton.onclick = async () => {
+    stopButton.disabled = true;
+    try {
+        if (sessionId) {
+            await fetch('/api/session/stop', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ session_id: sessionId })
+            });
+        }
+    } catch (e) {
+        showError(labels[currentLanguage].errorStop);
+    }
+    avatarContainer.style.display = 'none';
+    statusText.textContent = labels[currentLanguage].inactive;
+    startButton.disabled = false;
+    stopButton.disabled = true;
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+    if (vadStream) vadStream.getTracks().forEach(track => track.stop());
+    if (audioContext) audioContext.close();
+    sessionId = null;
+};
+async function setupLiveKit(url, token) {
+    await loadScript('https://unpkg.com/livekit-client/dist/livekit-client.umd.js');
+    const LivekitClient = window.LivekitClient;
+    const room = new LivekitClient.Room({ adaptiveStream: true, dynacast: true });
+    room.on(LivekitClient.RoomEvent.TrackSubscribed, (track) => {
+        if (track.kind === 'video') track.attach(document.getElementById('avatar-video'));
+        if (track.kind === 'audio') track.attach();
+    });
+    await room.connect(url, token);
+}
+function loadScript(src) {
+    return new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = src;
+        s.onload = resolve;
+        s.onerror = reject;
+        document.head.appendChild(s);
+    });
+}
+
+// --- Voice Activity Detection (VAD) ---
+function startVoiceRecognitionVAD() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        showError(labels[currentLanguage].errorMic);
+        return;
+    }
+    navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+        vadStream = stream;
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        vadSource = audioContext.createMediaStreamSource(stream);
+        vadScriptNode = audioContext.createScriptProcessor(2048, 1, 1);
+        vadSource.connect(vadScriptNode);
+        vadScriptNode.connect(audioContext.destination);
+        vadScriptNode.onaudioprocess = function(e) {
+            let input = e.inputBuffer.getChannelData(0);
+            let rms = Math.sqrt(input.reduce((sum, val) => sum + val * val, 0) / input.length);
+            if (rms > 0.02) { // voice detected
+                if (vadSilence) {
+                    vadSilence = false;
+                    startMediaRecorder();
+                }
+                if (vadTimeout) clearTimeout(vadTimeout);
+                vadTimeout = setTimeout(() => {
+                    vadSilence = true;
+                    stopMediaRecorder();
+                }, 400); // 0.4s of silence = end of speech
+            }
+        };
+    }).catch(() => showError(labels[currentLanguage].errorMic));
+}
+function startMediaRecorder() {
+    if (!vadStream) return;
+    if (mediaRecorder && mediaRecorder.state === 'recording') return;
+    audioChunks = [];
+    mediaRecorder = new MediaRecorder(vadStream, { mimeType: 'audio/webm;codecs=opus' });
+    mediaRecorder.ondataavailable = event => {
+        if (event.data.size > 0) audioChunks.push(event.data);
+    };
+    mediaRecorder.onstop = async () => {
+        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+        audioChunks = [];
+        if (audioBlob.size > 1024 && sessionId) await processAudio(audioBlob);
+    };
+    mediaRecorder.start();
+}
+function stopMediaRecorder() {
+    if (mediaRecorder && mediaRecorder.state === 'recording') mediaRecorder.stop();
+}
+async function processAudio(audioBlob) {
+    if (!sessionId) return;
+    const formData = new FormData();
+    formData.append('session_id', sessionId);
+    formData.append('audio', audioBlob);
+    formData.append('interface_language', currentLanguage);
+    try {
+        const response = await fetch('/api/process_audio', { method: 'POST', body: formData });
+        const data = await response.json();
+        if (!data.success) showError(data.error || labels[currentLanguage].errorAudio);
+    } catch (e) {
+        showError(labels[currentLanguage].errorAudio);
+    }
+}
+updateLanguage('en');
+</script>
+</body>
+</html>
