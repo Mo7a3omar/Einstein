@@ -125,11 +125,11 @@ def stop_heygen_session(session_id):
     payload = {"session_id": session_id}
     try:
         response = requests.post(url, json=payload, headers=get_headers(), timeout=5)
-        # Even if error, consider session stopped
-        return True
+        print(f"HeyGen stop response: {response.status_code} - {response.text}")
+        return response.status_code == 200
     except Exception as e:
         print(f"Error stopping HeyGen session: {e}")
-        return True
+        return False
 
 def send_message_to_avatar(session_id, text):
     url = "https://api.heygen.com/v1/streaming.task"
