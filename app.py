@@ -82,7 +82,7 @@ def process_audio_with_google(audio_data, language_hint):
 
 heygen_session = requests.Session()
 
-def create_session(max_retries=3):
+def create_session():
     url = "https://api.heygen.com/v1/streaming.new"
     payload = {
         "quality": "medium",
@@ -92,24 +92,20 @@ def create_session(max_retries=3):
         "disable_idle_timeout": False,
         "version": "v2"
     }
-    
-    for attempt in range(max_retries):
-        try:
-            response = heygen_session.post(url, json=payload, headers=get_headers(), timeout=15)
-            response.raise_for_status()
-            session_data = response.json()
-            if 'data' in session_data and 'session_id' in session_data['data']:
-                return session_data['data']
-        except requests.exceptions.ReadTimeout:
-            print(f"Timeout on attempt {attempt+1}/{max_retries}, retrying...")
-            time.sleep(2 * (attempt + 1))  # Exponential backoff
-        except Exception as e:
-            print(f"Error creating session: {e}")
-            if "429" in str(e):  # Rate limit error
-                time.sleep(5)
-                continue
-            break
+    try:
+        response = requests.post(url, json=payload, headers=get_headers(), timeout=5)
+        print(f"HeyGen API response status: {response.status_code}")
+        print(f"HeyGen API response body: {response.text}")
+        response.raise_for_status()
+        session_data = response.json()
+        if 'data' in session_data and 'session_id' in session_data['data']:
+            return session_data['data']
+    except Exception as e:
+        print(f"Error creating session: {e}")
+        if hasattr(e, 'response') and e.response:
+            print(f"Error response: {e.response.text}")
     return None
+
 
 
 def start_session(session_id):
