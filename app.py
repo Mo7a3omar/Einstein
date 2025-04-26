@@ -1,4 +1,5 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, redirect, url_for, session
+from functools import wraps
 import os
 import google.generativeai as genai
 import requests
@@ -21,7 +22,37 @@ avatar_id = "22e57a238de540c39d17b9abbcb814dd"
 voice_id = "7f3cf16f222240eead2e712ff3a91a77"
 
 app = Flask(__name__, template_folder='templates', static_folder='static')
+app.secret_key = os.urandom(24)  # Required for sessions
 sessions = {}
+
+# Password for accessing the application
+APP_PASSWORD = "Aiavaholomagic*0608"
+
+# Login required decorator
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'logged_in' not in session:
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    error = None
+    if request.method == 'POST':
+        password = request.form.get('password')
+        if password == APP_PASSWORD:
+            session['logged_in'] = True
+            return redirect(url_for('index'))
+        else:
+            error = "Invalid password. Please try again."
+    return render_template('login.html', error=error)
+
+@app.route('/logout')
+def logout():
+    session.pop('logged_in', None)
+    return redirect(url_for('login'))
 
 def get_headers():
     return {
@@ -106,8 +137,6 @@ def create_session():
             print(f"Error response: {e.response.text}")
     return None
 
-
-
 def start_session(session_id):
     url = "https://api.heygen.com/v1/streaming.start"
     payload = {"session_id": session_id}
@@ -166,10 +195,12 @@ def get_einstein_response(chat, user_message, language_hint):
         return "Sorry, I didn't catch that. Could you repeat your question?"
 
 @app.route('/')
+@login_required
 def index():
     return render_template('index.html')
 
 @app.route('/api/session/create', methods=['POST'])
+@login_required
 def api_create_session():
     interface_language = request.json.get('interface_language', 'en')
     session_data = create_session()
@@ -195,6 +226,7 @@ def api_create_session():
     return jsonify({'success': False, 'error': 'Failed to create session'})
 
 @app.route('/api/process_audio', methods=['POST'])
+@login_required
 def api_process_audio():
     session_id = request.form.get('session_id')
     if not session_id or session_id not in sessions or not sessions[session_id].get('active'):
@@ -219,6 +251,7 @@ def api_process_audio():
     })
 
 @app.route('/api/session/stop', methods=['POST'])
+@login_required
 def api_stop_session():
     data = request.json
     session_id = data.get('session_id')
