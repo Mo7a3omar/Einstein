@@ -26,7 +26,7 @@ app.secret_key = os.urandom(24)  # Required for sessions
 sessions = {}
 
 # Password for accessing the application
-APP_PASSWORD = "Aiavaholomagic*0608"
+APP_PASSWORD = "Aiavaholomagic*0608!"
 
 # Login required decorator
 def login_required(f):
