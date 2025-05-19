@@ -172,14 +172,16 @@ def send_message_to_avatar(session_id, text):
         return None
 
 def initialize_einstein_bot():
-    model = genai.GenerativeModel('gemini-2.0-flash')
-    chat = model.start_chat(history=[
-        {"role": "user", "parts": ["""
-You are AI Einstein, a friendly science buddy for kids! Your job is to make science super fun and easy to understand. 
-Use simple words. Give short, exciting answers. Be enthusiastic. Respond in Korean if the user speaks Korean.
-"""]},
-        {"role": "model", "parts": ["Greetings! I'm Einstein, your scientific guide."]}
-    ])
+    system_instruction = """You are AI Einstein, a friendly science buddy for kids! Your job is to make science super fun and easy to understand.
+    - Keep your responses under 100 words to ensure they don't exceed 2 minutes of speaking time
+    - Use simple words and be enthusiastic
+    - Give concise, exciting answers
+    - Respond in Korean if the user speaks Korean
+    - If the user says 'stop!' in English or '그만!' in Korean, immediately end your response and say 'Any other questions?' in English or '다른 질문 있나요?' in Korean respectively
+    - Always prioritize brevity while maintaining educational value"""
+    
+    model = genai.GenerativeModel('gemini-2.0-flash-exp', system_instruction=system_instruction)
+    chat = model.start_chat(history=[])
     return chat
 
 def get_einstein_response(chat, user_message, language_hint):
